@@ -1,0 +1,496 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Superstore 
+
+```{r cars, echo=FALSE, include=FALSE}
+library(packHV)
+library(corrplot)
+library(FactoMineR)
+```
+
+# Data Understanding
+```{r}
+superstore_data <- read.csv("C:/Users/tissi/Downloads/superstore_data.csv")
+#View(superstore_data)
+```
+We can see the Dataset, it is composed by 2240 rows and 22 attributes, of which 3 are chategoricals, 17 are integer and 2 are booleans.
+```{r}
+str(superstore_data)
+```
+
+The data are referred to the last year's campaign, below we have a small explanation of all the attributes:
+- Response (target) => 1 if customer accepted the offer in the last campaign, 0 otherwise
+- ID => Unique ID of each customer
+- Year_Birth => Age of the customer
+- Complain => 1 if the customer complained in the last 2 years
+- Dt_Customer => date of customer's enrollment with the company
+- Education => customer's level of education
+- Marital => customer's marital status
+- Kidhome => number of small children in customer's household
+- Teenhome => number of teenagers in customer's household
+- Income => customer's yearly household income
+- MntFishProducts => the amount spent on fish products in the last 2 years
+- MntMeatProducts => the amount spent on meat products in the last 2 years
+- MntFruits => the amount spent on fruits products in the last 2 years
+- MntSweetProducts => amount spent on sweet products in the last 2 years
+- MntWines => the amount spent on wine products in the last 2 years
+- MntGoldProds => the amount spent on gold products in the last 2 years
+- NumDealsPurchases => number of purchases made with discount
+- NumCatalogPurchases => number of purchases made using catalog (buying goods to be shipped through the mail)
+- NumStorePurchases => number of purchases made directly in stores
+- NumWebPurchases => number of purchases made through the company's website
+- NumWebVisitsMonth => number of visits to company's website in the last month
+- Recency => number of days since the last purchase
+
+Show the descriptive analysis about each attribute of the Dataset:
+```{r}
+summary(superstore_data)
+```
+
+It is important to see the distribution of the target variable:
+```{r}
+table(Absolute_frequency = superstore_data$Response)
+table(Relative_frequency = superstore_data$Response)/nrow(superstore_data)
+```
+Seeing the Absolute and Relative frequency, we have that the Dataset is not perfect balanced, in particular we have 334 value = 1 (customer accepted the offer in the last campaign) and 1906 value = 0 (Otherwise).
+
+## Data Cleaning
+## Identify the presence of n/a
+
+After we see the structure of the Dataset and the proprieties of the attributes that belong on it, we can move to the data cleaning.
+
+The first step is detected the presence of N/A value into our Dataset.
+
+The number of N/A is equal to:
+```{r, echo=FALSE}
+sum(is.na(superstore_data))
+```
+
+The fraction of N/A over the whole dataset is:
+```{r, echo=FALSE}
+sum(is.na(superstore_data))/nrow(superstore_data)
+```
+
+Because the number of N/A is very limited we opted for their removal from the Dataset without the use of any substitution techniques, such as K-NN.
+```{r, echo=FALSE, include=FALSE}
+db.ok <- na.omit(superstore_data)
+db.ok[is.na(db.ok) == TRUE,]
+```
+
+## Analyze the behaviour of attributes
+
+Another important step is the understanding of the attributes' behaviour.
+
+# Distribution of the Nominal Variables
+
+Education:
+```{r, echo=FALSE}
+table(Education = db.ok$Education, Response = db.ok$Response)
+pie(table(db.ok$Education))
+```
+
+Marital Status:
+```{r, echo=FALSE}
+table(Marital_Status = db.ok$Marital_Status, Response = db.ok$Response)
+pie(table(db.ok$Marital_Status))
+```
+For the variable "Marita_Status", we can see the presence of strange values, such as "absurd", "alone" and "YOLO".
+So, we decide to eliminate the observations related to the values "Absurd" and "YOLO"
+```{r}
+db.ok <- db.ok[!(db.ok$Marital_Status == "Absurd" | db.ok$Marital_Status == "YOLO"), ]
+```
+
+For the Value "Alone" we opted for substitute it with "Single", because they are synonyms and other values of these records are not incorrects or outliers.
+```{r}
+db.ok[db.ok$Marital_Status == "Alone" ,"Marital_Status"] <- "Single"
+table(db.ok$Marital_Status)
+```
+
+In fine, we transform the variables "Marital_Status" and "Education" as factor variable.
+```{r}
+db.ok$Education <- as.factor(db.ok$Education)
+db.ok$Marital_Status <- as.factor(db.ok$Marital_Status)
+
+```
+
+# Distribution of Numerical Attributes
+First we define a function for extract outliers from a list of value:
+```{r}
+Outlierslist <- function(lista){
+  diffquant <- IQR(lista)
+  up <- quantile(lista)[["75%"]] + 1.5*diffquant
+  down <- quantile(lista)[["25%"]] - 1.5*diffquant
+  outliers <- lista > up | lista < down
+  return(lista[outliers])
+}
+```
+
+
+Distribution of Year of Birth:
+```{r, echo=FALSE}
+hist_boxplot(db.ok[,"Year_Birth"], breaks = 35)#outlier
+```
+We can see the presence of the following outliers: 1893,1899,1900. 
+We decide to remove them:
+```{r}
+outyear <- Outlierslist(db.ok[,"Year_Birth"])#1893,1899,1900
+db.ok <- db.ok[- which(db.ok$Year_Birth %in% outyear), ]
+```
+
+Distribution of Recency:
+```{r, echo=FALSE}
+hist_boxplot(db.ok[,"Recency"], breaks = 35)
+```
+The trend seem to be constant and we can see that there isn't outlier.
+
+Distribution of Income:
+```{r, echo=FALSE}
+hist_boxplot(db.ok[,"Income"], breaks = 40)
+```
+We can see the presence of the following outliers: 157146 160803 666666 162397 157733 153924 156924 157243. We decide to remove them:
+```{r}
+outinc <- Outlierslist(db.ok[,"Income"])
+db.ok <- db.ok[- which(db.ok$Income %in% outinc), ]
+```
+
+As we can see from the below tables, in both the attributes "Kidhome" and "Teenhome", we have a small amount of absolutes values for the category 2.
+
+Kidhome
+```{r}
+table(db.ok$Kidhome)
+```
+Teenhome
+```{r}
+table(db.ok$Teenhome)
+```
+
+So, we decide to transform this 2 variables into boolean variables (0 no child, 1 otherwise).
+```{r}
+db.ok[db.ok$Kidhome > 0,"Kidhome"] <- 1
+db.ok[db.ok$Kidhome == 0,"Kidhome"] <- 0
+```
+
+```{r}
+db.ok[db.ok$Teenhome > 0,"Teenhome"] <- 1
+db.ok[db.ok$Teenhome == 0,"Teenhome"] <- 0
+```
+
+
+We now move to show the distribution of the variables that define the amount spent in products by the customers:
+```{r, echo=FALSE}
+amount_spent <- c("MntWines", "MntFruits", "MntMeatProducts", "MntFishProducts", "MntSweetProducts", "MntGoldProds")
+
+boxplot(db.ok[, amount_spent])
+```
+
+
+We do the same for the variables about the amount of the type of purchases did:
+```{r, echo=FALSE}
+num_purchases <- c("NumDealsPurchases", "NumWebPurchases", "NumCatalogPurchases", "NumStorePurchases", "NumWebVisitsMonth")
+
+boxplot(db.ok[, num_purchases])
+```
+
+Seeing this two distribution tables, we observe a huge amount of big values but we decide to keep than based on a thinking about the data domain, infact, since it is a superstore and this particular attributes are amount and it is possible that has been bought by professionals who wanted to resell this products in smaller market for example.
+
+
+We transform the variable "Dt_Customer" from a date to the distance from that date to today in days.
+```{r}
+day <- Sys.Date()
+format(day, format="%m/%d/%Y")
+dates <- as.Date(db.ok$Dt_Customer, "%m/%d/%Y")
+db.ok$Dt_Customer <- as.numeric(day - dates)
+```
+See the distribution of the variable "Dt_Customer":
+```{r, echo=FALSE}
+boxplot(as.numeric(db.ok$Dt_Customer))
+```
+
+
+## Correlation
+We move to the correlation analysis to see the correlation Matrix about the numerical attributes:
+```{r, echo=FALSE}
+corrmat <- cor(db.ok[,c(2,5,8,9,10,11,12,13,14,15,16,17,18,19,20)])
+corrplot(corrmat, method = "square", type = "lower", addCoef.col = "black", number.cex = 0.5, diag = FALSE)
+```
+
+We can see a strong correlation between the variable "Income" with the amount of purchase and amount spent by costumers, excepted for the number of deal purchases. The variables "Year_Birth", "Dt_Customer" and "Recency" have a reduced correlation with the other numeric variables.
+
+
+## PCA
+Because we have a huge dimensional space for the predictor, we want to reduce it applying the Principal Component Analysis.
+
+We choose the numerical attributes that have a correlation with the others of at least |0.3|, after we scale the data, this is necessary for comparing the attributes that have different dimension and different unit of measure.
+```{r, echo=FALSE}
+db.scale <- scale(db.ok[, c(5,10,11,12,13,14,15,17,18,19,20)])
+db.pca <- prcomp(db.scale)
+
+summary(db.pca)
+```
+Looking at the Principal Component, we decide to keep the first 7 PC that are able to explain the 90,6% of the total variance.
+
+
+Graphical representation of PC:
+```{r, echo=FALSE}
+db.pca2 <- PCA(db.ok[, c(5,10,11,12,13,14,15,16,18,19,20)])
+```
+
+## Clustering
+The cluster analysis is a machine learning tool that want to identify similarities between the observation of the dataset, and in particular we want to identify groups of record similar each other and dissimilar with respect to the others.
+
+For this kind of Dataset we opted for the K-means technique, because its dimension is too large for the Hierarchical cluster's technique.
+
+# K-Means
+K-Means is a prototype based clustering technique that, starting from initial guesses on the prototypes, aggregate recursively new data points that are in the neighborhood of the prototype. Once new data are added the centroid is recomputed and new near points are added till a stable partition is achieved. The parameters needed are:
+- Number of clusters
+- Initial prototype(centroid)
+it is also possible to start only with the number of clusters and have random prototypes, since at the end the algorithm can achieve stability in any case. 
+First of all we perform the distance matrix.
+We use the PC value, so we don't need to scale them.
+```{r}
+dist_db <- dist(db.pca$x[,1:7])
+```
+
+Because, for use the K-means we have to know in advance the number of clusters, we perform a scree plot that show us the different possible partitions produce using the K-means technique and provide the average silhouette for each possible scenario. We produce this since we don't have any clues about the possible number of cluster from the data.  
+Silhouette is a measure of the goodness of clusters, in particular its range values is -1, +1. A silhouette equal to -1 means that the average records of each cluster are more near to the records of the other cluster with respect to the one within the cluster. If the metric is equal to 1 we have a great clusters.
+The recommended number of clusters is 2, because produce the highest silhouette value.
+```{r, echo=FALSE, include=FALSE}
+library(ggplot2)
+library(factoextra)
+library(cluster)
+```
+```{r, echo=FALSE}
+fviz_nbclust(db.pca$x[,1:8], kmeans)
+```
+
+We can see the extension on the space of the 2 Clusters:
+```{r, echo=FALSE}
+db.kmeans2 <- kmeans(dist_db, 2)
+fviz_cluster(db.kmeans2, data = dist_db)
+```
+
+#DBScan
+We decide also to adopt a Density-based Clustering with DBScan algorithm, to see if it provide better results.
+The DB scan algorithm is a technique that is based on the concept of dense region, in these region we have more data points and the algorithm try to aggregate this points according to some kind of treshold encoded by two parameters:
+- The radius of the hyper-spherical neighborhood
+- The number of minimal point needed for a neighborhood to consider it as dense
+```{r, echo=FALSE, include=FALSE}
+library(dbscan)
+```
+
+Does not exist a single best choice for define this parameters, but we can follow a Rule of Thumb:
+MinPts = 2*(number of attributes)-1
+MinPts = 2*7 - 1 = 13
+For the radius we have to inspecting the MinPts - distance plot.
+
+Because we talk about the density of the cluster, we want the minimize the number of point that identify the core region and its radius (scale data garantee to have a omogenius radius for all dimansion)
+```{r, echo=FALSE}
+kNNdistplot(db.pca$x[,1:7], 13)
+grid()
+abline(h=2.8, col="red") 
+```
+The radius or eps value chosen is 2.8 because represents the point in which we have a strong change in the behavior of the data distances. 
+
+So, we can compute the Density-based Clustering, with the algorithm DBScan: 
+```{r}
+db.densityclust <- dbscan(db.pca$x[,1:7], eps = 2.8, minPts = 13)
+db.densityclust
+```
+
+Visual representation of the clusters:
+```{r, echo=FALSE}
+hullplot(db.scale, db.densityclust$cluster)  
+```
+
+# Comparison the 2 Clustering Techniques
+
+For evaluate the 2 model we use the Silhouette metric, that apply to a cluster represent the average of the Silhouette values of each observation that belong into the cluster. For any observation x belong to the cluster C the silhouette is equal to:
+S(x) = (average distance to the members of the nearest cluster (C’) - average distance to the members of the same cluster (C)) / max (the two average of the numerator)
+So this represent a measure of the compactness and robustness of the cluster, the value belongs to the interval [-1,1]
+
+Silhouette for the K-means technique
+With respect the clusters:
+```{r, echo=FALSE}
+aggregate(silhouette(db.kmeans2$cluster, dist_db), by=list(db.kmeans2$cluster), F=mean)
+```
+Absolute value for the model:
+```{r, echo=FALSE}
+mean(silhouette(db.kmeans2$cluster, dist_db)[,3])
+```
+
+Silhouette for the technique DBScan
+With respect the clusters:
+```{r, echo=FALSE}
+aggregate(silhouette(db.densityclust$cluster, dist_db), by=list(db.densityclust$cluster), F=mean)
+```
+Absolute value for the model:
+```{r, echo=FALSE}
+mean(silhouette(db.densityclust$cluster, dist_db)[,3])
+```
+
+We can also observe how the values of the target variable are split into the clusters for the 2 models:
+```{r}
+table(Kmeans_Cluster = db.kmeans2$cluster, target = db.ok$Response)
+table(DBscan_Cluster = db.densityclust$cluster, target = db.ok$Response)
+```
+
+Looking at the silhouette among the cluster of the two models and also through the visual inspection of the graphical representation we can say that the k-means results more appropriate for divided the observation in clusters. The problem with the Denisty Based Clustering is that we have a strong density region in which are present the most number of observation, this brought the algorithm DBScan to take into a unique cluster almost all the observation. For this the value of the silhouette apply to that model is not reliable. 
+
+
+##Classification
+
+We change the Target Variable from 0 and 1 into "No Accepted" and "Accepted".
+After, we split the Dataset in 2 subset: Training and Test set
+```{r}
+db.ok[db.ok$Response == 1, "Response"] <- "Accepted"
+db.ok[db.ok$Response == 0, "Response"] <- "No Accepted"
+
+set.seed(123)
+training_set_row <- sample(nrow(db.ok), nrow(db.ok)*.8)
+db.train = db.ok[training_set_row,]
+db.test = db.ok[-training_set_row,]
+```
+
+We evaluate if the Training and test set well represent the Dataset, comparing the 2 distribution:
+Training set
+```{r, echo=FALSE}
+table(Absolut_value = db.train$Response)
+table(Relative_value = db.train$Response) / nrow(db.train)
+```
+Test set
+```{r, echo=FALSE}
+table(Absolut_value = db.test$Response)
+table(Relative_value = db.test$Response) / nrow(db.test)
+```
+
+# 1° Decision Tree
+```{r, echo=FALSE}
+library(rpart)
+library(rpart.plot)
+```
+The Decision tree aim is to find an hierarchical structure to explain how different areas of the input space correspond to different outcomes. It is based on the concept of entropy and the algorithm investigate the most relevant attribute at each possible split, and the most relevant attribute is that one that minimize the entropy in the child nodes and as a consequence maximize the information gain.
+Define the model of the Decision Tree => Target_var ~ Descriptive_var use for analysis
+In this case we choose as predictive all the variables excepted for "Id" the is unique for all the records so useless for the classification.
+
+We see below the hierarchical structure:
+```{r, echo=FALSE}
+#target var ~ describe var use on analysis
+db.dt <- rpart(Response ~. - Id, data= db.train)
+
+rpart.plot(db.dt, extra=101)
+#extra 101 take the plot with a different font, more details, on the plot you can see if decision tree is a good tecnique of partition
+```
+
+
+# 2° Random Forest
+
+Random Forest technique is an ensemble technique used when we need a classification and it is not very important the internal interpretability of the model, and it is also a better choice for Datasets with great values of variance because the decision trees are notoriously unstable (due to the greedy technique on which they're built) and small changes in the attributes could lead to completely different decision trees.
+In this case we choose a number of decision stumps equal to 200.
+```{r}
+library(randomForest)
+
+db.randFore <- randomForest(as.factor(Response) ~. -Id, data = db.train, ntree = 200)
+```
+
+# 3° Naive Bayes Classifier
+The Naive Bayes classifier is a probabilistic classifier which has brutal assumptions about the data distribution but nevertheless perform very good in practice, it performs that well that has become a baseline method. The most relevant assumption is that the attributes are conditionally independent. Another important assumption is that missclassification errors have equal costs and under this assumption the classifier predict the most probable class.
+```{r}
+library(e1071)
+```
+
+We did a first application of the model with respect all the predictor excepted for "Id".
+```{r}
+db.naiveBayes = naiveBayes(Response ~. -Id, data=db.train)
+#db.naiveBayes#we can see the apriori probability and condition probability table
+```
+
+We re-perform the model but in this case we choose as predictor the most important variable following the results obtain from the decision tree.
+```{r}
+#class(db.dt$variable.importance)
+db.naiveBayes2 = naiveBayes(Response ~ MntWines + Recency + MntGoldProds + Income + Dt_Customer + Marital_Status + MntSweetProducts + NumStorePurchases + MntFishProducts + MntFruits, data=db.train)
+```
+
+
+# 3° SVM
+
+At the end, we perform the support-vector machine analysis.
+Support Vector Classifier is a natural approach for classification in a two-class setting if the boundary between this two classes is linear. Support Vector Machine address the problem of non-linear boundaries by enlarging the feature space using quadratic, cubic or high-order polynomial functions of the predictors.
+```{r, echo=FALSE, include=FALSE}
+library(e1071)
+```
+
+```{r, echo=FALSE, include=FALSE}
+db.train$Response <- as.factor(db.train$Response)
+db.test$Response <- as.factor(db.test$Response)
+```
+
+we take three different models, that changing with respect the kind of kernel.
+```{r}
+iris.lsvm1 = svm(Response ~ ., data = db.train, type = "C-classification", kernel = 'linear', class.weights = c("Accepted" = 6,"No Accepted" = 1))
+
+iris.lsvm2 = svm(Response ~ ., data = db.train, type = "C-classification", kernel = 'polynomial', class.weights = c("Accepted" = 6,"No Accepted" = 1))
+
+iris.lsvm3 = svm(Response ~ ., data = db.train, type = "C-classification", kernel = 'radial', class.weights = c("Accepted" = 6,"No Accepted" = 1))
+```
+
+
+## Accuracy and Prediction
+We evaluate the different classifier model through the use of the contingency matrix.
+
+Naive Bayes Classifier:
+1° model
+```{r}
+prediction.nb <- predict(db.naiveBayes, db.test)
+table(Prediction = db.test$Response, Truth = prediction.nb)
+
+```
+2° Model
+```{r, echo=FALSE}
+prediction.nb2 <- predict(db.naiveBayes2, db.test)
+table(Prediction = predict(db.naiveBayes2, db.test), Truth = db.test$Response)
+
+```
+
+Decision Tree:
+```{r, echo=FALSE}
+predictio.dt <- predict(db.dt, db.test, type = "class")
+table(Prediction = predictio.dt, Truth = db.test$Response)
+
+```
+
+Support Vector Machine:
+```{r, echo=FALSE}
+table(Linear_Prediction = predict(iris.lsvm1, db.test),Truth = db.test$Response)
+print("                                                                                               ")
+table(Polynomial_Prediction = predict(iris.lsvm2, db.test),Truth = db.test$Response)
+print("                                                                                               ")
+table(Radial_Prediction = predict(iris.lsvm3, db.test),Truth = db.test$Response)
+```
+
+Random Forest
+```{r}
+table(Prediction = predict(db.randFore, db.test), Truth = db.test$Response)
+```
+
+
+Function for the accuracy and sensitivity
+```{r}
+accuracy <- function(TP, TN, FP, FN){
+  a <- (TP + TN) / (TP + TN + FP + FN)
+  return(a)
+}
+
+sensitivity <- function(TP, FN){
+  a <- TP / (TP + FN)
+}
+```
+
+Table Models Accuracy and Sensitivity:
+```{r, echo=FALSE}
+data.frame(Model = c("Naive_Bayes1", "Naive_Bayes2", "Decision_tree", "Random_Forest", "SVM_Linear", "SVM_Polynomial", "SVM_Radial"), accuracy = c(accuracy(32,309,70,30), accuracy(26,330,36,49), accuracy(20,368,42,11), accuracy(16, 369, 46, 10), accuracy(54,300,8,79), accuracy(50,340,12,39), accuracy(55,323,7,56)), sensitivity = c(sensitivity(32,30), sensitivity(26,49), sensitivity(20,11), sensitivity(16,10), sensitivity(54,79), sensitivity(50,39), sensitivity(55,56)))
+```
+
+In conclusion, by analyzing the results of the various classification models we can see by taking a look at the confusion matrix that we have good results in the prediction of the True Negatives in almost all models but a poorly classification on the True Positives. in this last table we computed a couple of metrics for evaluate the performances of the models, and by looking at the datas we can see that the decision tree seems the better model to classify this dataset, taking into account both accuracy and sensitivity values.
